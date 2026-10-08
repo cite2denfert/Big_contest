@@ -1,0 +1,13 @@
+# 공모전 제공 데이터·자료 (외부 공개 금지)
+2026빅콘테스트_*/
+테이블 정의서_*/
+*.pdf
+
+# 직접 수집한 기상 원자료 (scripts/download_weather.py로 재수집 가능)
+data/
+
+# 환경·캐시
+.uv-cache/
+__pycache__/
+*.pyc
+.venv/
