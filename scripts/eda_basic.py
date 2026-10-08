@@ -102,9 +102,8 @@ md(cmp_.to_markdown())
 md()
 
 # 개인 결제 + 지역 상권과 무관한 업종(세금·금융·통신·온라인 결제 등) 제외를 분석 기본값으로 사용
-NON_COMMERCE = ["세금공과금", "ZZ_나머지", "결제대행(PG)", "학교등록금", "보험",
-                "통신요금(PC통신,무선호출)", "통신요금(이동,시내전화)", "상품권/복권",
-                "수입자동차", "중고차판매", "면세점"]
+from common import NON_COMMERCE  # noqa: E402
+
 nc = card1[~corp].groupby(["MCT_SGG_CD", card1.MCT_RY_CD.isin(NON_COMMERCE)]).TS_AT.sum().unstack()
 md(f"- 상권 무관 업종 {len(NON_COMMERCE)}개 제외: {', '.join(NON_COMMERCE)}")
 md("- 개인 결제액 중 제외 업종 비중: "
