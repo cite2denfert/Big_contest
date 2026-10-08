@@ -277,12 +277,51 @@ def download():
     print('Download complete. Validation:', json.dumps(validation, ensure_ascii=False), flush=True)
 
 
+def climatology(first_year=2015, last_year=2024):
+    """Long-run daily observations for exposure frequency (heat/heavy-rain days per year)."""
+    form = 'F00501'
+    jobs = []
+    for station in STATIONS:
+        elements = catalogue(station, form)
+        cursor, end_all = dt.datetime(first_year, 1, 1), dt.datetime(last_year, 12, 31)
+        while cursor <= end_all:
+            end = min(cursor + dt.timedelta(days=9), end_all)
+            jobs.append((station, form, cursor, end, elements))
+            cursor = end + dt.timedelta(days=1)
+
+    def work(job):
+        station, form_, start, end, elements = job
+        target = OUT / 'raw' / 'climatology' / station / f'{start:%Y%m%d}_{end:%Y%m%d}.html.gz'
+        text = fetch(STATIONS[station]['page'], parameters(station, form_, start, end, elements), target)
+        rows, _ = parse(text)
+        time.sleep(0.2)
+        return station, rows
+
+    out = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        for done, (station, rows) in enumerate(pool.map(work, jobs), 1):
+            cfg = STATIONS[station]
+            for row in rows:
+                out.append({'station_id': station, 'MCT_SGG_CD': cfg['region'],
+                            'TA_YMD': row['TM'].replace('-', ''),
+                            'temperature_max_c': row.get('MAX_TA'), 'temperature_min_c': row.get('MIN_TA'),
+                            'precipitation_reported_mm': row.get('SUM_RN')})
+            if done % 50 == 0 or done == len(jobs):
+                print(f'climatology {done}/{len(jobs)} requests, {len(out)} rows', flush=True)
+    out.sort(key=lambda r: (r['station_id'], r['TA_YMD']))
+    write_csv(OUT / f'climatology_daily_{first_year}_{last_year}.csv', out, list(out[0]))
+    write_manifest()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--probe', action='store_true')
     parser.add_argument('--download', action='store_true')
     parser.add_argument('--supplement', action='store_true')
+    parser.add_argument('--climatology', action='store_true')
     args = parser.parse_args()
+    if args.climatology:
+        climatology()
     if args.probe:
         for station in STATIONS:
             for form in ['F00502', 'F00501']:
