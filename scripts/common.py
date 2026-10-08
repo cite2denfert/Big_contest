@@ -64,6 +64,14 @@ def load_weather_daily():
     return wd[wd.date.between("2025-07-01", "2025-12-31")]
 
 
+def load_climatology():
+    """2015~2024 일자료 (scripts/download_weather.py --climatology). ASOS 강수 빈칸 = 무강수."""
+    c = pd.read_csv(WEATHER_DIR / "climatology_daily_2015_2024.csv", encoding="utf-8-sig", dtype={"TA_YMD": str})
+    c["date"] = pd.to_datetime(c.TA_YMD, format="%Y%m%d")
+    c["precipitation_reported_mm"] = c.precipitation_reported_mm.fillna(0)
+    return c.dropna(subset=["temperature_max_c"])
+
+
 def load_weather_hourly():
     wh = pd.read_csv(WEATHER_DIR / "weather_hourly.csv", encoding="utf-8-sig", dtype={"TA_YMD": str})
     wh = wh[wh.is_boundary_extra == 0]

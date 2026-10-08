@@ -61,7 +61,8 @@ def fit_panel(df, keys, value="TS_AT"):
             if t in res.params and X[t].sum() > 0:
                 rows.append({**dict(zip(keys, k if isinstance(k, tuple) else (k,))), "항목": t,
                              "계수": res.params[t], "표준오차": res.bse[t], "p": res.pvalues[t],
-                             "일수": int(X[t].sum()), "기준일값": normal, "n": len(g), "R2": res.rsquared})
+                             "일수": int(X[t].sum()), "기준일값": normal, "평균값": g[value].mean(),
+                             "잔차SD": res.resid.std(), "n": len(g), "R2": res.rsquared})
     out = pd.DataFrame(rows)
     out["변화율"] = np.exp(out.계수) - 1
     out["하한"] = np.exp(out.계수 - 1.96 * out.표준오차) - 1
@@ -74,12 +75,21 @@ def bh(p):
     return multipletests(p, method="fdr_bh")[1]
 
 
-def eb_shrink(b, se):
-    """경험적 베이즈 축소: 표본이 적어 표준오차가 큰 계수를 집단 평균 쪽으로 당김 (DerSimonian-Laird)."""
+def eb_shrink(b, se, center="zero"):
+    """경험적 베이즈 축소: 표준오차가 큰(표본이 적은) 계수를 중심 쪽으로 당김.
+
+    center="zero": 회의적 사전분포 N(0, tau²) — '날씨 효과 없음'에서 출발해 데이터가 뒷받침하는 만큼만 남김.
+                   tau² = max(0, (Σ w·b² - k) / Σ w)  (E[w·b²] = 1 + w·tau²)
+    center="mean": 정밀도 가중 평균 중심 (DerSimonian-Laird)
+    """
     b, se = np.asarray(b, float), np.asarray(se, float)
     w = 1 / se ** 2
-    mu = np.sum(w * b) / np.sum(w)
-    q = np.sum(w * (b - mu) ** 2)
-    tau2 = max(0.0, (q - (len(b) - 1)) / (np.sum(w) - np.sum(w ** 2) / np.sum(w)))
+    if center == "zero":
+        mu = 0.0
+        tau2 = max(0.0, (np.sum(w * b ** 2) - len(b)) / np.sum(w))
+    else:
+        mu = np.sum(w * b) / np.sum(w)
+        q = np.sum(w * (b - mu) ** 2)
+        tau2 = max(0.0, (q - (len(b) - 1)) / (np.sum(w) - np.sum(w ** 2) / np.sum(w)))
     k = tau2 / (tau2 + se ** 2)
     return mu + k * (b - mu), k
