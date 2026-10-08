@@ -19,9 +19,18 @@
 | `scripts/eda_basic.py` | `outputs/eda/` 기본 EDA |
 | `scripts/check_online_industries.py` | `outputs/industry_check/` 강남 컴퓨터/소프트웨어·쇼핑몰 점검 |
 | `scripts/weather_regression.py` | `outputs/regression/` 업종별 폭염·호우 효과 회귀분석 |
+| `scripts/region_profile.py` | `outputs/region_profile/` 강남·춘천 지역 특성 |
+| `scripts/group_regression.py` | `outputs/group_regression/` 업종군 효과, 강남 제외 기준 민감도 |
+| `scripts/vulnerability_index.py` | `outputs/vulnerability/` 기후 취약도 지수, 예보 기반 지원 우선순위 |
+| `scripts/predict_damage.py` | `outputs/prediction/` LightGBM 매출 예측·반사실 피해·경보 분류 |
+
+공통 모듈: `scripts/common.py`(경로·제외 업종·업종군), `scripts/weather_models.py`(회귀 설계·경험적 베이즈 축소).
+2차 분석 요약: `outputs/findings_round2.md`.
+
+취약도 지수는 10년 기후 자료가 필요하다: `python -X utf8 scripts/download_weather.py --climatology`
 
 실행 예:
 
 ```
-uv run --no-project --with pandas --with matplotlib --with tabulate --with statsmodels python -X utf8 scripts/<스크립트>.py
+uv run --no-project --with pandas --with matplotlib --with tabulate --with statsmodels --with scipy --with lightgbm --with scikit-learn python -X utf8 scripts/<스크립트>.py
 ```
