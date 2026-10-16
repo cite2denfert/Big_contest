@@ -1,6 +1,6 @@
 """춘천 강수 모델 공통 데이터·설정 (chuncheon_model.py, chuncheon_subdisaster.py에서 사용).
 
-build_panel(): 지역 × 업종군 × 일 패널 (목표 = log 결제액 − 최근 28일 평균, 달력·이력·강수·통제 변수)
+build_panel(): 지역 × 업종군 × 일 패널 (목표 = log 결제액 − 최근 28일 중 무강수 평일 평균, 달력·이력·강수·통제 변수)
 """
 import lightgbm as lgb
 import numpy as np
@@ -44,8 +44,14 @@ def build_panel():
     grid = units.merge(pd.DataFrame({"date": pd.date_range("2025-07-01", "2025-12-31")}), how="cross")
     x = grid.merge(x, how="left", on=["MCT_SGG_CD", "group", "date"]).sort_values(["MCT_SGG_CD", "group", "date"])
     x["y"] = np.log(x.TS_AT)
+    # 기준 수준(roll28)은 무강수·평일(공휴일·연말 전야 제외)만으로 계산: 비 온 날을 섞으면 비가 잦은 달에
+    # 기준이 앞선 비 피해만큼 낮아져, 목표(y − roll28)와 반사실 피해가 모두 작게 잡힌다.
+    dry = x[["MCT_SGG_CD", "date"]].merge(w[["MCT_SGG_CD", "date", "rain"]], how="left").rain.eq(0).to_numpy(copy=True)
+    dry &= ~x.date.isin(HOL.union(EVE)).values
+    x["y_dry"] = x.y.where(dry)
+    x["roll28"] = x.groupby(["MCT_SGG_CD", "group"]).y_dry.transform(
+        lambda s: s.shift(1).rolling(28, min_periods=7).mean())
     gy = x.groupby(["MCT_SGG_CD", "group"]).y
-    x["roll28"] = gy.transform(lambda s: s.shift(1).rolling(28, min_periods=7).mean())
     x["lag7_rel"] = gy.shift(7) - x.roll28
     x["lag14_rel"] = gy.shift(14) - x.roll28
     x["roll7_rel"] = gy.transform(lambda s: s.shift(1).rolling(7, min_periods=4).mean()) - x.roll28
