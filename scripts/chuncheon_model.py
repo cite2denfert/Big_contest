@@ -31,13 +31,14 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 
-from common import GROUP_OF, INDUSTRY_GROUPS, ROOT, commerce, load_card, load_weather_hourly
-from weather_models import EVE, HOL, eb_shrink, weather_features
+
+from common import INDUSTRY_GROUPS, ROOT
+from chuncheon_data import BASE_F, CC, CTRL_F, RAIN_F, RAIN_LABELS, build_panel, lgbm
+from weather_models import EVE, HOL, eb_shrink
 
 warnings.filterwarnings("ignore")
 OUT = ROOT / "outputs" / "chuncheon_model"
 OUT.mkdir(parents=True, exist_ok=True)
-CC = "강원 춘천시"
 MODELS = ["M0 지난주 같은 요일", "M1 기상 제외", "M2 강수 포함", "M3 M1+강수 보정"]
 MCOLOR = dict(zip(MODELS, ["#c3c2b7", "#86b6ef", "#1c5cab", "#eb6834"]))
 INK2, MUTED, GRID = "#52514e", "#898781", "#e1e0d9"
@@ -48,14 +49,6 @@ plt.rcParams.update({
     "grid.color": GRID, "grid.linewidth": 0.6, "axes.spines.top": False, "axes.spines.right": False,
     "axes.titlesize": 12, "axes.titleweight": "bold", "legend.frameon": False,
 })
-PARAMS = dict(n_estimators=400, learning_rate=0.03, num_leaves=7, min_child_samples=40, subsample=0.8,
-              subsample_freq=1, colsample_bytree=0.8, reg_lambda=5.0, random_state=0, verbose=-1)
-BASE_F = ["dow", "holiday", "eve", "dom", "lag7_rel", "lag14_rel", "roll7_rel", "group_c"]
-RAIN_F = ["rain", "rain_hmax", "rain_hours", "rain_lag1", "rain_lag2", "wet_run"]
-CTRL_F = ["tmax_anom", "heat33"]
-MONO = {"rain": -1, "rain_hmax": -1, "rain_hours": -1}
-RAIN_BINS = [-np.inf, 0, 10, 30, np.inf]
-RAIN_LABELS = ["0", "0.1~10", "10~30", "30+"]
 TEST_MONTHS = [9, 10, 11, 12]
 log = []
 
@@ -66,40 +59,8 @@ def md(text=""):
 
 
 # ---------------------------------------------------------------- 데이터
-card = commerce(load_card(1)).assign(group=lambda x: x.MCT_RY_CD.map(GROUP_OF))
-w = weather_features()
-wh = load_weather_hourly().assign(p=lambda x: x.precipitation_reported_mm.fillna(0))
-hw = wh.groupby(["MCT_SGG_CD", "date"]).agg(rain_hmax=("p", "max"), rain_hours=("p", lambda s: (s > 0).sum()))
-w = w.merge(hw.reset_index(), on=["MCT_SGG_CD", "date"], how="left")
-g = w.groupby("MCT_SGG_CD")
-w["rain_lag1"] = g.rain.shift(1)
-w["rain_lag2"] = g.rain.shift(2)
-wet = (w.rain >= 1).astype(int)
-w["wet_run"] = wet.groupby([w.MCT_SGG_CD, (wet != wet.groupby(w.MCT_SGG_CD).shift()).cumsum()]).cumsum() * wet
-w["tmax_anom"] = w.temperature_max_c - g.temperature_max_c.transform(lambda s: s.shift(1).rolling(14, min_periods=5).mean())
-w["heat33"] = (w.temperature_max_c >= 33).astype(int)
-
-x = card.groupby(["MCT_SGG_CD", "group", "date"]).TS_AT.sum().reset_index()
-units = x[["MCT_SGG_CD", "group"]].drop_duplicates()
-grid = units.merge(pd.DataFrame({"date": pd.date_range("2025-07-01", "2025-12-31")}), how="cross")
-x = grid.merge(x, how="left", on=["MCT_SGG_CD", "group", "date"]).sort_values(["MCT_SGG_CD", "group", "date"])
-x["y"] = np.log(x.TS_AT)
-gy = x.groupby(["MCT_SGG_CD", "group"]).y
-x["roll28"] = gy.transform(lambda s: s.shift(1).rolling(28, min_periods=7).mean())
-x["lag7_rel"] = gy.shift(7) - x.roll28
-x["lag14_rel"] = gy.shift(14) - x.roll28
-x["roll7_rel"] = gy.transform(lambda s: s.shift(1).rolling(7, min_periods=4).mean()) - x.roll28
-x["target"] = x.y - x.roll28
-x = x.merge(w[["MCT_SGG_CD", "date"] + RAIN_F + CTRL_F], on=["MCT_SGG_CD", "date"], how="left")
-x["dow"] = x.date.dt.dayofweek
-x["holiday"] = x.date.isin(HOL).astype(int)
-x["eve"] = x.date.isin(EVE).astype(int)
-x["dom"] = x.date.dt.day
-x["group_c"] = (x.MCT_SGG_CD.str[3:] + "_" + x.group).astype("category")
-x["region_c"] = x.MCT_SGG_CD.astype("category")
-x["rbin"] = pd.cut(x.rain, RAIN_BINS, labels=RAIN_LABELS).astype(str)
-x = x.dropna(subset=["target", "roll28", "tmax_anom", "rain"]).reset_index(drop=True)
-x["month"] = x.date.dt.month
+# ---------------------------------------------------------------- 데이터
+card, w, x = build_panel()
 cc = x.MCT_SGG_CD == CC
 
 md("# 춘천 업종군 강수 피해 예측 모델\n")
@@ -111,9 +72,6 @@ md("- 춘천 월별 강수일: " + ", ".join(
     for m in range(7, 13)))
 md()
 
-
-def lgbm(feats):
-    return lgb.LGBMRegressor(**PARAMS, monotone_constraints=[MONO.get(f, 0) for f in feats])
 
 
 def rain_adjust(train, pred_col):
