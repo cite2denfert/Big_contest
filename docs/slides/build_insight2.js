@@ -7,7 +7,7 @@ const pptxgen = require("pptxgenjs");
 
 const ROOT = path.resolve(__dirname, "..", "..");
 const D = JSON.parse(fs.readFileSync(path.join(ROOT, "outputs/chuncheon_leisure_lodging/slides_data.json"), "utf8"));
-const OUT = path.join(__dirname, "insight2_leisure_lodging.pptx");
+const OUT = process.env.PPTX_OUT || path.join(__dirname, "insight2_leisure_lodging.pptx");
 const APPLY_THEME = process.env.PPTX_APPLY_THEME;
 
 const THEME = {
@@ -43,16 +43,6 @@ pres.title = "인사이트 2 — 춘천 레저·숙박의 비 피해";
 const C = pres.SchemeColor;
 
 pres.defineSlideMaster({
-  title: "SECTION",
-  background: { color: HEX.dark },
-  objects: [
-    { placeholder: { options: { name: "title", type: "title", x: 0.8, y: 1.5, w: 11.7, h: 2.0, fontSize: 44, bold: true, align: "left",
-                                color: C.background1, valign: "bottom", margin: 0 }, text: "" } },
-    { placeholder: { options: { name: "body", type: "body", x: 0.8, y: 3.7, w: 11.7, h: 0.6, fontSize: 20,
-                                color: "C8D6DF", margin: 0 }, text: "" } },
-  ],
-});
-pres.defineSlideMaster({
   title: "CONTENT",
   background: { color: "FFFFFF" },
   margin: [0.5, 0.6, 0.6, 0.6],
@@ -81,72 +71,23 @@ function caption(slide, text, x, y, w) {
                         objectName: "chart caption" });
 }
 
-// ---------------------------------------------------------------- 1. 섹션 표지
-{
-  const s = pres.addSlide({ masterName: "SECTION", sectionTitle: SEC });
-  s.addText("춘천 레저·숙박은\n비 오는 날 가장 약한 상권", { placeholder: "title" });
-  s.addText("인사이트 2 · 업종별 비 피해와 회복", { placeholder: "body" });
-  const chips = [
-    [pct(chg(G["야외·레저"].loss)), "야외·레저", "비 10mm+ 날 매출 변화"],
-    [pct(chg(G["숙박·여행"].cum)), "숙박·여행", "비 온 뒤 3일 누적 변화"],
-    [pct(chg(G["생활소매"].cum), 1), "생활소매", "3일 누적: 다음 날 회복"],
-  ];
-  chips.forEach(([v, name, desc], i) => {
-    const x = 0.8 + i * 3.9;
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y: 4.85, w: 3.6, h: 1.55, rectRadius: 0.12,
-      fill: { color: "1F4252" }, line: { color: "1F4252" }, objectName: `stat card ${i + 1}` });
-    s.addText(v, { x: x + 0.3, y: 4.98, w: 3.0, h: 0.75, fontSize: 36, bold: true, margin: 0, isTextBox: true,
-                   color: i < 2 ? "F08A57" : "9CC3E6" });
-    s.addText([{ text: name, options: { bold: true, breakLine: true } }, { text: desc }],
-              { x: x + 0.3, y: 5.72, w: 3.1, h: 0.6, fontSize: 13, color: "DCE6EC", margin: 0, isTextBox: true });
-  });
-  s.addNotes("인사이트 1에서 비가 오면 춘천 상권 전체 매출이 줄어든다는 걸 봤습니다. 이번에는 '어떤 업종이 가장 약한가'입니다. " +
-    "결론부터 말씀드리면, 야외·레저는 비 오는 당일 매출이 40% 줄어 업종 중 가장 크게 떨어지고, 숙박은 비 온 뒤 사흘에 걸쳐 손실이 쌓입니다. " +
-    "반대로 생활소매는 다음 날 장보기로 손실을 거의 다 메웁니다.");
+const RB = D.robust;
+
+function card3(s, x, y, w, h, title, value, desc, color, name) {
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y, w, h, rectRadius: 0.1, fill: { color: HEX.tint },
+                                              line: { color: HEX.tint }, objectName: name });
+  s.addText([{ text: title, options: { bold: true, fontSize: 14, color: HEX.ink, breakLine: true } },
+             { text: value, options: { bold: true, fontSize: 18, color, breakLine: true } },
+             { text: desc, options: { fontSize: 13, color: HEX.ink } }],
+            { x: x + 0.2, y: y + 0.07, w: w - 0.35, h: h - 0.12, margin: 0, valign: "top", isTextBox: true });
 }
 
-// ---------------------------------------------------------------- 2. 분석 설계 · 컬럼 선택
-{
-  const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: SEC });
-  s.addText("어떤 컬럼으로, 어떻게 비교했나", { placeholder: "title" });
-  const hdr = (t) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: HEX.dark } } });
-  const rows = [
-    [hdr("컬럼"), hdr("의미"), hdr("이 분석에서 쓴 이유")],
-    ["TA_YMD", "결제일", "일별 기상 관측과 날짜로 1:1 연결"],
-    ["MCT_RY_CD", "가맹점 업종", "업종군 12개, 레저·숙박 세부 업종 9개를 직접 비교"],
-    ["TS_AT", "결제 금액", "피해를 매출 금액으로 보기 위해 사용"],
-    ["CLN_SGG_CD", "고객 거주 시도 (데이터2)", "외지 관광객과 강원 고객을 나눠 누가 빠지는지 확인"],
-    ["일강수량 · 최고기온", "기상청 ASOS 춘천", "비 10mm+ 여부, 폭염 날 통제"],
-  ];
-  s.addTable(rows, { x: 0.6, y: 1.85, w: 7.7, colW: [2.0, 2.2, 3.5], fontSize: 13, color: HEX.ink,
-    border: { type: "solid", pt: 0.75, color: HEX.grid }, rowH: 0.62, valign: "middle", margin: 0.08,
-    objectName: "column table" });
-  s.addText("법인 결제와 비상권 업종 13개는 제외 (전처리 장 참고)", { x: 0.6, y: 5.75, w: 7.7, h: 0.35, fontSize: 12,
-    color: HEX.muted, margin: 0, isTextBox: true });
-
-  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 8.8, y: 1.85, w: 3.95, h: 4.25, rectRadius: 0.1,
-    fill: { color: HEX.tint }, line: { color: HEX.tint }, objectName: "definition card" });
-  const items = [
-    ["비 피해율", "비 10mm+ 온 날의 매출 변화 (비 안 온 날 대비)"],
-    ["같이 통제", "같은 주 · 요일 · 공휴일(추석 연휴) · 폭염"],
-    ["회복", "비 온 뒤 1~3일 효과까지 더한 누적 변화"],
-  ];
-  items.forEach(([h, b], i) => {
-    const y = 2.1 + i * 1.3;
-    s.addShape(pres.shapes.OVAL, { x: 9.05, y, w: 0.5, h: 0.5, fill: { color: HEX.orange }, line: { color: HEX.orange },
-                                   objectName: `step ${i + 1}` });
-    s.addText(String(i + 1), { x: 9.05, y, w: 0.5, h: 0.5, fontSize: 16, bold: true, color: "FFFFFF", align: "center",
-                               valign: "middle", margin: 0, isTextBox: true });
-    s.addText([{ text: h, options: { bold: true, fontSize: 15, breakLine: true } }, { text: b, options: { fontSize: 13 } }],
-              { x: 9.75, y: y - 0.05, w: 2.85, h: 1.1, color: HEX.ink, valign: "top", margin: 0, isTextBox: true });
-  });
-  s.addNotes("분석에 쓴 컬럼과 이유입니다. 날짜(TA_YMD)로 기상과 연결하고, 업종(MCT_RY_CD)으로 업종을 비교했고, 결제금액(TS_AT)으로 피해를 금액 기준으로 봤습니다. " +
-    "데이터2의 고객 거주지(CLN_SGG_CD)로 외지 관광객과 강원 고객을 나눴습니다. " +
-    "비 피해율은 비가 10mm 넘게 온 날 매출이 비 안 온 날보다 얼마나 낮은지입니다. 같은 주, 요일, 공휴일, 폭염 효과는 빼고 비교했습니다. " +
-    "회복은 비 온 뒤 1~3일까지의 효과를 더한 누적값으로 봤습니다.");
+function footnote(s, text, y = 6.2, h = 0.65) {
+  s.addText(text, { x: 9.0, y, w: 3.8, h, fontSize: 10, color: HEX.muted, margin: 0, valign: "bottom", isTextBox: true,
+                    objectName: "footnote" });
 }
 
-// ---------------------------------------------------------------- 3. 업종군 비 피해
+// ---------------------------------------------------------------- 1. 업종군 비 피해
 {
   const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: SEC });
   s.addText("비 오는 날 야외·레저 매출 40% 감소, 업종 중 최대", { placeholder: "title" });
@@ -159,6 +100,7 @@ function caption(slide, text, x, y, w) {
     barGapWidthPct: 45, ...AXIS, catAxisLabelPos: "low", objectName: "group rain chart" });
 
   const L = G["야외·레저"];
+  const Lr = RB["야외·레저(업종군)"];
   s.addText(pct(chg(L.loss)), { x: 9.0, y: 1.95, w: 3.7, h: 1.1, fontSize: 64, bold: true, color: HEX.orange, margin: 0,
                                 isTextBox: true });
   s.addText([{ text: "야외·레저", options: { bold: true, breakLine: true } },
@@ -166,18 +108,20 @@ function caption(slide, text, x, y, w) {
              { text: `95% 구간 ${ci(L.lo, L.hi)}`, options: { color: HEX.muted, fontSize: 12 } }],
             { x: 9.0, y: 3.05, w: 3.75, h: 0.95, fontSize: 14, color: HEX.ink, margin: 0, isTextBox: true });
   s.addText([
-    { text: "매출 절반을 차지하는 외식·생활소매보다 6~8배 큰 감소",
-      options: { bullet: true, breakLine: true } },
-    { text: `숙박·여행 ${pct(chg(G["숙박·여행"].loss))}은 당일만 보면 불확실하지만, 비 온 뒤 며칠에 걸쳐 손실이 드러남 (다음 장)`,
-      options: { bullet: true } },
-  ], { x: 9.0, y: 4.15, w: 3.75, h: 2.4, fontSize: 14, color: HEX.ink, margin: 0, paraSpaceAfter: 8, valign: "top",
+    { text: "매출 절반을 차지하는 외식·생활소매보다 6~8배 큰 감소", options: { bullet: true, breakLine: true } },
+    { text: "숙박·여행은 당일 감소가 불확실하고, 손실은 비 온 뒤에 드러남 (다음 장)", options: { bullet: true } },
+  ], { x: 9.0, y: 4.15, w: 3.75, h: 1.6, fontSize: 14, color: HEX.ink, margin: 0, paraSpaceAfter: 8, valign: "top",
        isTextBox: true });
-  s.addNotes(`업종군 12개를 비교한 결과입니다. 비가 10mm 넘게 오는 날 야외·레저 매출은 40% 줄어, 다른 업종보다 압도적으로 큽니다. ` +
+  footnote(s, `쓴 컬럼: 날짜·업종·결제금액·고객 거주지 (부록 A)\n` +
+              `기온을 연속값으로 통제해도 야외·레저 ${pct(Lr["기온연속_변화"])} (p<0.001)`, 5.85, 1.0);
+  s.addNotes(`업종군 12개를 비교한 결과입니다. 비가 10mm 넘게 오는 날 야외·레저 매출은 40% 줄어 다른 업종보다 압도적으로 큽니다. ` +
     `95% 신뢰구간도 ${ci(L.lo, L.hi)}로 확실합니다. 춘천 매출의 절반을 차지하는 외식과 생활소매는 5~7% 정도 줄어듭니다. ` +
-    `숙박·여행은 당일 ${pct(chg(G["숙박·여행"].loss))}로 통계적으로는 불확실한데, 다음 장에서 보듯 비 온 뒤 며칠에 걸쳐 손실이 커집니다.`);
+    `비 오는 날이 여름에 몰려 있어 기온을 더 촘촘히 통제해 봤는데, 그래도 야외·레저는 ${pct(Lr["기온연속_변화"])}로 뚜렷합니다. ` +
+    `숙박·여행은 당일 ${pct(chg(G["숙박·여행"].loss))}로 통계적으로는 불확실한데, 다음 장에서 보듯 비 온 뒤 며칠에 걸쳐 손실이 커집니다. ` +
+    `분석에는 날짜, 업종, 결제금액 컬럼을 썼고, 고객 거주지는 데이터2에서 가져왔습니다. 자세한 선택 이유는 부록에 있습니다.`);
 }
 
-// ---------------------------------------------------------------- 4. 회복
+// ---------------------------------------------------------------- 2. 회복
 {
   const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: SEC });
   s.addText("레저는 당일에, 숙박은 며칠에 걸쳐 무너지고 회복하지 못한다", { placeholder: "title" });
@@ -191,35 +135,26 @@ function caption(slide, text, x, y, w) {
        showLegend: true, legendPos: "t", legendFontFace: "+mn-lt", legendFontSize: 12, legendColor: HEX.ink,
        barGapWidthPct: 60, catAxisLabelPos: "high", ...AXIS, dataLabelFormatCode: "+0.0%;-0.0%;0%",
        objectName: "recovery chart" });
-  const rows = [
-    ["야외·레저", `${pct(chg(G["야외·레저"].day0), 1)} → ${pct(chg(G["야외·레저"].cum), 1)}`, "잃은 손님이 돌아오지 않음", HEX.orange],
-    ["숙박·여행", `${pct(chg(G["숙박·여행"].day0), 1)} → ${pct(chg(G["숙박·여행"].cum), 1)}`, "취소가 이어져 손실이 커짐", HEX.orange],
-    ["생활소매", `${pct(chg(G["생활소매"].day0), 1)} → ${pct(chg(G["생활소매"].cum), 1)}`, "다음 날 장보기로 회복", HEX.blue],
-  ];
-  rows.forEach(([n, v, d, col], i) => {
-    const y = 1.95 + i * 1.45;
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 9.0, y, w: 3.75, h: 1.25, rectRadius: 0.1, fill: { color: HEX.tint },
-                                                line: { color: HEX.tint }, objectName: `recovery card ${i + 1}` });
-    s.addText([{ text: n, options: { bold: true, fontSize: 14, color: HEX.ink, breakLine: true } },
-               { text: v, options: { bold: true, fontSize: 20, color: col, breakLine: true } },
-               { text: d, options: { fontSize: 13, color: HEX.ink } }],
-              { x: 9.2, y: y + 0.08, w: 3.4, h: 1.1, margin: 0, valign: "top", isTextBox: true });
-  });
-  s.addText(`누적 95% 구간
-야외·레저 ${ci(G["야외·레저"].cum_lo, G["야외·레저"].cum_hi)} · ` +
-            `숙박·여행 ${ci(G["숙박·여행"].cum_lo, G["숙박·여행"].cum_hi)}`,
-            { x: 9.0, y: 6.3, w: 3.8, h: 0.5, fontSize: 10, color: HEX.muted, margin: 0, isTextBox: true });
+  const arrow = (n) => `${pct(chg(G[n].day0), 1)} → ${pct(chg(G[n].cum), 1)}`;
+  card3(s, 9.0, 1.95, 3.75, 1.2, "야외·레저", arrow("야외·레저"), "잃은 손님이 돌아오지 않음", HEX.orange, "recovery card 1");
+  card3(s, 9.0, 3.3, 3.75, 1.2, "숙박·여행", arrow("숙박·여행"), "비 온 뒤에도 손실이 커짐", HEX.orange, "recovery card 2");
+  card3(s, 9.0, 4.65, 3.75, 1.2, "생활소매", arrow("생활소매"), "1~3일 안에 반등해 손실을 메움", HEX.blue, "recovery card 3");
+  const ci2 = (lo, hi) => ci(lo, hi).replace(" ~ ", "~");
+  footnote(s, `누적 95% 구간: 레저 ${ci2(G["야외·레저"].cum_lo, G["야외·레저"].cum_hi)}, ` +
+              `숙박 ${ci2(G["숙박·여행"].cum_lo, G["숙박·여행"].cum_hi)}\n` +
+              `생활소매 1~3일 뒤 반등 p = ${D.retail_rebound_p.toFixed(2)}`);
   s.addNotes("비 온 뒤 회복을 본 장입니다. 파란 막대는 비 온 당일, 주황 막대는 그 뒤 사흘까지 더한 누적 변화입니다. " +
-    "생활소매는 당일 5% 줄지만 다음 날 장보기로 거의 다 메워 누적으로는 0에 가깝습니다. 손님이 날짜만 미룬 겁니다. " +
+    `생활소매는 당일 5% 줄지만 그 뒤 1~3일 사이 매출이 반등해 누적으로는 0에 가깝습니다. 반등은 통계적으로 유의합니다(p = ${D.retail_rebound_p.toFixed(2)}). ` +
+    "손님이 장보기를 하루이틀 미룬 것으로 해석할 수 있습니다. " +
     "야외·레저는 당일 40% 빠진 뒤 그대로입니다. 비 때문에 취소한 골프나 나들이는 다시 오지 않는다는 뜻입니다. " +
     "숙박·여행은 당일보다 그 뒤가 더 나빠 누적 38% 감소입니다. 비 예보로 이어지는 예약 취소로 보입니다. " +
     "그래서 레저와 숙박은 손실이 사라지는 업종, 즉 지원이 필요한 업종입니다.");
 }
 
-// ---------------------------------------------------------------- 5. 세부 업종
+// ---------------------------------------------------------------- 3. 세부 업종 + 고객 거주지
 {
   const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: SEC });
-  s.addText("피해는 골프장·레저타운·교통에 집중, 사우나는 오히려 늘었다", { placeholder: "title" });
+  s.addText("피해는 외지 관광객 업종에 집중, 비가 오면 실내로 옮겨 간다", { placeholder: "title" });
   const subs = D.sub.filter((r) => LABEL[r.name]).sort((a, b) => b.loss - a.loss);
   const col = (r) => (r.p < 0.05 ? (r.loss > 0 ? HEX.orange : HEX.blue) : HEX.gray);
   caption(s, "레저·숙박 세부 업종별 비 10mm+ 날 매출 변화", 0.6, 1.75, 7.9);
@@ -228,97 +163,63 @@ function caption(slide, text, x, y, w) {
     valAxisMajorUnit: 0.1, chartColors: subs.map(col), showValue: true, dataLabelPosition: "outEnd", showLegend: false,
     barGapWidthPct: 45, catAxisLabelPos: "low", ...AXIS, objectName: "subindustry chart" });
 
-  const keys = [[HEX.orange, "뚜렷한 감소"], [HEX.gray, "차이 불확실"], [HEX.blue, "뚜렷한 증가"]];
-  keys.forEach(([c, t], i) => {
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 9.0 + i * 1.27, y: 1.95, w: 0.28, h: 0.28, rectRadius: 0.05,
+  [[HEX.orange, "뚜렷한 감소"], [HEX.gray, "차이 불확실"], [HEX.blue, "뚜렷한 증가"]].forEach(([c, t], i) => {
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 9.0 + i * 1.27, y: 1.85, w: 0.28, h: 0.28, rectRadius: 0.05,
                                                 fill: { color: c }, line: { color: c }, objectName: `key ${i + 1}` });
-    s.addText(t, { x: 9.33 + i * 1.27, y: 1.9, w: 0.95, h: 0.38, fontSize: 11, color: HEX.ink, margin: 0, isTextBox: true });
+    s.addText(t, { x: 9.33 + i * 1.27, y: 1.8, w: 0.95, h: 0.38, fontSize: 11, color: HEX.ink, margin: 0, isTextBox: true });
   });
-  const o = (n) => pct(S[n].outsider).replace("+", "");
-  s.addText([
-    { text: `감소 업종은 외지 고객 비중이 높음: 골프장 ${o("실내/실외골프장")}, 레저타운 ${o("종합레저타운/놀이동산")}, 교통 ${o("고속버스/철도/여객선")}`,
-      options: { bullet: true, breakLine: true } },
-    { text: `동네 주민 시설은 영향 없음: 헬스장(외지 ${o("헬스장")}), 스포츠시설(${o("스포츠시설")})`,
-      options: { bullet: true, breakLine: true } },
-    { text: `사우나·목욕탕 ${pct(chg(S["싸우나/목욕탕"].loss))}: 비가 오면 실내로 이동`, options: { bullet: true } },
-  ], { x: 9.0, y: 2.55, w: 3.75, h: 3.3, fontSize: 14, color: HEX.ink, margin: 0, paraSpaceAfter: 10, valign: "top",
-       isTextBox: true });
-  s.addText("여행사·항공사는 결제일이 적어 제외. 숙박 카드 결제는 앱 선결제가 빠진 현장 결제 위주", {
-    x: 9.0, y: 6.05, w: 3.8, h: 0.7, fontSize: 10, color: HEX.muted, margin: 0, isTextBox: true });
-  s.addNotes("레저와 숙박 안을 업종별로 쪼갠 결과입니다. 주황은 뚜렷하게 줄어든 업종, 회색은 차이가 불확실한 업종, 파랑은 뚜렷하게 늘어난 업종입니다. " +
-    "골프장은 58%, 고속버스·철도는 47%, 레저타운·놀이동산은 45% 줄었습니다. 세 업종 모두 외지 고객 비중이 80% 안팎입니다. " +
-    "반대로 헬스장과 스포츠시설처럼 동네 주민이 쓰는 곳은 비의 영향이 없습니다. " +
-    `사우나는 오히려 ${pct(chg(S["싸우나/목욕탕"].loss)).replace("+", "")} 늘었습니다. 비가 오면 관광객이 아예 안 오는 게 아니라 실내로 옮겨 간다는 신호입니다. ` +
-    "호텔·콘도도 21% 줄었지만 결제가 들쭉날쭉해 통계적으로는 불확실합니다. 숙박은 앱 선결제가 데이터에서 빠지는 한계도 있습니다.");
-}
-
-// ---------------------------------------------------------------- 6. 외지 vs 강원
-{
-  const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: SEC });
-  s.addText("외지 관광객이 더 크게 빠지고, 비가 오면 실내로 옮겨 간다", { placeholder: "title" });
-  const names = ["실내/실외골프장", "종합레저타운/놀이동산", "싸우나/목욕탕"];
-  caption(s, "고객 거주지별 비 10mm+ 날 매출 변화", 0.6, 1.75, 7.9);
-  s.addChart(pres.charts.BAR, [
-    { name: "강원 고객", labels: names.map((n) => LABEL[n]), values: names.map((n) => chg(S[n]["강원_피해율"])) },
-    { name: "외지 고객", labels: names.map((n) => LABEL[n]), values: names.map((n) => chg(S[n]["외지_피해율"])) },
-  ], { x: 0.5, y: 2.1, w: 8.0, h: 4.7, barDir: "col", barGrouping: "clustered", valAxisMinVal: -0.8, valAxisMaxVal: 0.6,
-       valAxisMajorUnit: 0.2, chartColors: [HEX.blue, HEX.orange], showValue: true, dataLabelPosition: "outEnd",
-       showLegend: true, legendPos: "t", legendFontFace: "+mn-lt", legendFontSize: 12, legendColor: HEX.ink,
-       barGapWidthPct: 60, catAxisLabelPos: "low", ...AXIS, objectName: "residence chart" });
   const g = S["실내/실외골프장"], sa = S["싸우나/목욕탕"];
-  const cards = [
-    ["골프장", `강원 ${pct(chg(g["강원_피해율"]))} · 외지 ${pct(chg(g["외지_피해율"]))}`, "외지 관광객이 더 크게 취소", HEX.orange],
-    ["사우나·목욕탕", `강원 ${pct(chg(sa["강원_피해율"]))} · 외지 ${pct(chg(sa["외지_피해율"]))}`, "비 오는 날 외지 관광객이 실내로", HEX.blue],
-    ["레저타운·놀이동산", "강원·외지 모두 약 -45%", "고객 대부분(80%)이 외지", HEX.orange],
-  ];
-  cards.forEach(([n, v, d, c], i) => {
-    const y = 1.95 + i * 1.45;
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 9.0, y, w: 3.75, h: 1.25, rectRadius: 0.1, fill: { color: HEX.tint },
-                                                line: { color: HEX.tint }, objectName: `residence card ${i + 1}` });
-    s.addText([{ text: n, options: { bold: true, fontSize: 14, color: HEX.ink, breakLine: true } },
-               { text: v, options: { bold: true, fontSize: 17, color: c, breakLine: true } },
-               { text: d, options: { fontSize: 13, color: HEX.ink } }],
-              { x: 9.2, y: y + 0.08, w: 3.4, h: 1.1, margin: 0, valign: "top", isTextBox: true });
-  });
-  s.addText(`강원 고객 = 강원도 거주(춘천 밖 포함). 사우나 외지 고객 95% 구간 ${ci(sa["외지_하한"], sa["외지_상한"])}로 넓음`,
-            { x: 9.0, y: 6.3, w: 3.8, h: 0.5, fontSize: 10, color: HEX.muted, margin: 0, isTextBox: true });
-  s.addNotes("같은 업종 안에서 고객이 어디 사는지에 따라 나눠 봤습니다. " +
-    `골프장은 강원 고객이 ${pct(chg(g["강원_피해율"]))}, 외지 고객이 ${pct(chg(g["외지_피해율"]))}로 외지 관광객이 더 크게 빠집니다. ` +
-    "레저타운·놀이동산은 둘 다 45% 정도 줄었는데, 애초에 고객 80%가 외지인입니다. " +
-    `사우나는 외지 고객 매출이 ${pct(chg(sa["외지_피해율"]))} 늘었습니다. 비 오는 날 춘천에 온 관광객이 실내 시설로 옮겨 간 겁니다. ` +
-    "결국 레저 피해는 외지 관광객이 비 때문에 일정을 취소하거나 바꾸는 문제이고, 실내로 붙잡을 여지도 있다는 뜻입니다.");
+  const o = (n) => pct(S[n].outsider).replace("+", "");
+  const res = (r) => `강원 ${pct(chg(r["강원_피해율"]))} · 외지 ${pct(chg(r["외지_피해율"]))}`;
+  card3(s, 9.0, 2.35, 3.75, 1.15, `골프장 (외지 고객 ${o("실내/실외골프장")})`, res(g), "외지 관광객이 더 크게 취소", HEX.orange, "sub card 1");
+  card3(s, 9.0, 3.62, 3.75, 1.15, "사우나·목욕탕", res(sa), "비 오는 날 실내로 이동", HEX.blue, "sub card 2");
+  card3(s, 9.0, 4.89, 3.75, 1.15, "헬스장·스포츠시설", `외지 고객 ${o("헬스장")}~${o("스포츠시설")}`, "주민 이용 시설은 영향 없음",
+        HEX.muted, "sub card 3");
+  footnote(s, `사우나 증가는 기온 통제 방식을 바꿔도 ${pct(RB["사우나·목욕탕"]["기온연속_변화"])} (p = ${RB["사우나·목욕탕"]["기온연속_p"].toFixed(3)}). ` +
+              "강원 = 강원도 거주(춘천 밖 포함). 숙박은 앱 선결제가 빠진 현장 결제 위주", 6.15, 0.7);
+  s.addNotes("레저와 숙박을 세부 업종으로 쪼갠 결과입니다. 주황은 뚜렷하게 줄어든 업종, 회색은 차이가 불확실한 업종, 파랑은 뚜렷하게 늘어난 업종입니다. " +
+    "골프장은 58%, 고속버스·철도는 47%, 레저타운·놀이동산은 45% 줄었습니다. 세 업종 모두 외지 고객 비중이 80% 안팎입니다. " +
+    `같은 골프장 안에서도 강원 고객은 ${pct(chg(g["강원_피해율"]))}, 외지 고객은 ${pct(chg(g["외지_피해율"]))}로 외지 관광객이 더 크게 빠집니다. ` +
+    "반대로 헬스장과 스포츠시설처럼 주민이 쓰는 곳은 영향이 없습니다. " +
+    `사우나는 오히려 ${pct(chg(sa.loss)).replace("+", "")} 늘었고, 외지 고객은 ${pct(chg(sa["외지_피해율"]))} 늘었습니다. ` +
+    "비 오는 날 더 선선해서 늘어난 것 아니냐는 질문에 대비해 기온을 촘촘히 통제해 봤는데, 그래도 18% 증가로 유의합니다. " +
+    "비가 오면 관광객이 아예 안 오는 게 아니라 실내로 옮겨 간다는 신호이고, 이것이 정책 제안의 실마리입니다. " +
+    "호텔·콘도도 21% 줄었지만 결제가 들쭉날쭉해 통계적으로는 불확실하고, 숙박은 앱 선결제가 데이터에서 빠지는 한계가 있습니다.");
 }
 
-// ---------------------------------------------------------------- 7. 정리
+// ---------------------------------------------------------------- 부록 A. 컬럼 선택
+pres.addSection({ title: "부록" });
 {
-  const s = pres.addSlide({ masterName: "SECTION", sectionTitle: SEC });
-  s.addText("정리: 춘천의 비 취약 상권은\n레저(당일 충격)와 숙박(회복 실패)", { placeholder: "title" });
-  s.addText("원인은 외지 관광객의 이탈 → 모델은 이 손실과 회복을 예측하고, 정책은 재방문을 만든다", { placeholder: "body" });
-  const cards = [
-    ["1", "당일 충격", `야외·레저 ${pct(chg(G["야외·레저"].loss))}\n업종 중 최대 감소`],
-    ["2", "회복 실패", `숙박·여행 3일 누적 ${pct(chg(G["숙박·여행"].cum))}\n레저도 손실을 메우지 못함`],
-    ["3", "원인", "외지 관광객 이탈\n비 오면 실내(사우나 등)로 이동"],
+  const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "부록" });
+  s.addText("부록 A. 사용 컬럼과 선택 이유", { placeholder: "title" });
+  const hdr = (t) => ({ text: t, options: { bold: true, color: "FFFFFF", fill: { color: HEX.dark } } });
+  const rows = [
+    [hdr("컬럼"), hdr("의미"), hdr("이 분석에서 쓴 이유")],
+    ["TA_YMD", "결제일", "일별 기상 관측과 날짜로 1:1 연결"],
+    ["MCT_RY_CD", "가맹점 업종", "업종군 12개, 레저·숙박 세부 업종 9개를 직접 비교"],
+    ["TS_AT", "결제 금액", "피해를 매출 금액으로 보기 위해 사용"],
+    ["CLN_SGG_CD", "고객 거주 시도 (데이터2)", "외지 관광객과 강원 고객을 나눠 누가 빠지는지 확인"],
+    ["일강수량 · 기온", "기상청 ASOS 춘천", "비 10mm+ 여부, 기온 효과 통제"],
   ];
-  cards.forEach(([n, h, b], i) => {
-    const x = 0.8 + i * 3.9;
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x, y: 4.7, w: 3.6, h: 1.65, rectRadius: 0.12, fill: { color: "1F4252" },
-                                                line: { color: "1F4252" }, objectName: `summary card ${i + 1}` });
-    s.addShape(pres.shapes.OVAL, { x: x + 0.25, y: 4.9, w: 0.45, h: 0.45, fill: { color: HEX.orange },
-                                   line: { color: HEX.orange }, objectName: `summary number ${i + 1}` });
-    s.addText(n, { x: x + 0.25, y: 4.9, w: 0.45, h: 0.45, fontSize: 15, bold: true, color: "FFFFFF", align: "center",
-                   valign: "middle", margin: 0, isTextBox: true });
-    s.addText(h, { x: x + 0.85, y: 4.9, w: 2.6, h: 0.45, fontSize: 17, bold: true, color: "FFFFFF", valign: "middle",
-                   margin: 0, isTextBox: true });
-    s.addText(b, { x: x + 0.25, y: 5.45, w: 3.2, h: 0.8, fontSize: 13, color: "DCE6EC", margin: 0, valign: "top",
-                   isTextBox: true });
+  s.addTable(rows, { x: 0.6, y: 1.85, w: 7.7, colW: [2.0, 2.2, 3.5], fontSize: 13, color: HEX.ink,
+    border: { type: "solid", pt: 0.75, color: HEX.grid }, rowH: 0.62, valign: "middle", margin: 0.08,
+    objectName: "column table" });
+  s.addText("법인 결제와 비상권 업종 13개는 제외 (전처리 장 참고)", { x: 0.6, y: 5.75, w: 7.7, h: 0.35, fontSize: 12,
+    color: HEX.muted, margin: 0, isTextBox: true });
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 8.8, y: 1.85, w: 3.95, h: 4.25, rectRadius: 0.1,
+    fill: { color: HEX.tint }, line: { color: HEX.tint }, objectName: "definition card" });
+  [["비 피해율", "비 10mm+ 온 날의 매출 변화 (비 안 온 날 대비)"],
+   ["같이 통제", "같은 주 · 요일 · 공휴일(추석 연휴) · 폭염. 강건성 확인으로 기온 연속값 통제도 함께"],
+   ["회복", "비 온 뒤 1~3일 효과까지 더한 누적 변화"]].forEach(([h, b], i) => {
+    const y = 2.1 + i * 1.3;
+    s.addShape(pres.shapes.OVAL, { x: 9.05, y, w: 0.5, h: 0.5, fill: { color: HEX.orange }, line: { color: HEX.orange },
+                                   objectName: `step ${i + 1}` });
+    s.addText(String(i + 1), { x: 9.05, y, w: 0.5, h: 0.5, fontSize: 16, bold: true, color: "FFFFFF", align: "center",
+                               valign: "middle", margin: 0, isTextBox: true });
+    s.addText([{ text: h, options: { bold: true, fontSize: 15, breakLine: true } }, { text: b, options: { fontSize: 13 } }],
+              { x: 9.75, y: y - 0.05, w: 2.85, h: 1.2, color: HEX.ink, valign: "top", margin: 0, isTextBox: true });
   });
-  s.addText("한계: 숙박 앱 선결제 미포함 · 6개월(비 10mm+ 26일) · 고객 거주지는 시도 단위 · 외지 비중과 피해의 관계는 레저·숙박 안에서만 확인", {
-    x: 0.8, y: 6.65, w: 11.7, h: 0.35, fontSize: 11, color: "9FB3BF", margin: 0, isTextBox: true });
-  s.addNotes("정리하겠습니다. 춘천에서 비에 가장 약한 상권은 두 곳입니다. 야외·레저는 비 오는 당일 40% 빠지는 충격이 가장 크고, " +
-    "숙박은 당일보다 그 뒤 사흘에 걸쳐 손실이 쌓여 회복하지 못합니다. 원인은 외지 관광객이 비 때문에 오지 않는 데 있고, " +
-    "비가 와도 실내로 옮겨 가는 관광객이 있다는 점은 대책의 실마리입니다. " +
-    "다음 장 AI 모델에서는 이 두 업종의 매출 감소와 회복을 예측하고, 정책 제안에서는 관광객을 다시 오게 하는 방법을 다룹니다. " +
-    "한계로, 숙박은 앱 선결제가 데이터에서 빠지고, 기간이 6개월이며, 업종군 전체로 보면 외지인 비중과 피해의 관계는 뚜렷하지 않아 레저·숙박 안에서만 주장합니다.");
+  s.addNotes("분석에 쓴 컬럼과 이유입니다. 질문이 나오면 이 장을 보여 주세요.");
 }
 
 pres.writeFile({ fileName: OUT }).then(async (f) => {

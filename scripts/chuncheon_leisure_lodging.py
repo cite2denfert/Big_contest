@@ -20,6 +20,8 @@ import pandas as pd
 import statsmodels.api as sm
 
 from common import GROUP_OF, INDUSTRY_GROUPS, ROOT, commerce, load_card
+from scipy.stats import norm
+
 from weather_models import EVE, HOL, weather_features
 
 warnings.filterwarnings("ignore")
@@ -44,15 +46,20 @@ for k in LAGS:
     w[f"r10_l{k}"] = w.r10.shift(k).fillna(0)
 
 
-def fit(daily, lags=False):
-    """daily: date-index 일 결제액 Series → 회귀 결과."""
+def fit(daily, lags=False, temp="bins"):
+    """daily: date-index 일 결제액 Series → 회귀 결과. temp="cont"면 기온 구간 대신 최고(2차)·최저기온 연속값 통제."""
     d = daily[daily > 0].to_frame("y").join(w, how="inner")
     X = pd.get_dummies(d.index.isocalendar().week.astype(str), prefix="wk", drop_first=True).set_index(d.index)
     X = X.join(pd.get_dummies(d.index.dayofweek.astype(str), prefix="dow", drop_first=True).set_index(d.index))
     X["holiday"] = d.index.isin(HOL)
     X["eve"] = d.index.isin(EVE)
-    for lab in ["30~33", "33~35", "35+"]:
-        X[f"t_{lab}"] = d.tbin.eq(lab)
+    if temp == "bins":
+        for lab in ["30~33", "33~35", "35+"]:
+            X[f"t_{lab}"] = d.tbin.eq(lab)
+    else:
+        X["tmax"] = d.temperature_max_c
+        X["tmax2"] = d.temperature_max_c ** 2
+        X["tmin"] = d.temperature_min_c
     X["r_lt10"] = d.r_lt10
     X["r10"] = d.r10
     if lags:
@@ -150,11 +157,41 @@ md(t.round(3).to_markdown())
 md("\n- 고객 거주지는 카드 고객의 거주 시도(데이터2, 법인 제외). '강원'에는 춘천 밖 강원 거주자도 포함된다.")
 md("- 숙박은 플랫폼(앱) 선결제가 춘천 숙박업소가 아닌 온라인 업종으로 잡혀, 카드 데이터에는 현장 결제분 위주로 남는다.\n")
 
+# ---------------------------------------------------------------- 5. 강건성: 기온 통제 방식
+md("## 4. 강건성: 기온을 연속값(최고기온 2차식·최저기온)으로 통제해도 같은가\n")
+md(f"비 10mm+ 날 최고기온 평균 {w[w.r10 == 1].temperature_max_c.mean():.1f}℃ vs 비 안 온 날 {w[w.rain == 0].temperature_max_c.mean():.1f}℃ "
+   "(비가 여름에 몰려 비 온 날이 더 더움) → 기온 구간만으로 덜 걸러진 기온 효과가 있는지 확인. 값은 매출 변화율(음수 = 감소).\n")
+rows = []
+checks = [("야외·레저(업종군)", card.group == "야외·레저", None), ("골프장", card.MCT_RY_CD == "실내/실외골프장", None),
+          ("레저타운·놀이동산", card.MCT_RY_CD == "종합레저타운/놀이동산", None),
+          ("사우나·목욕탕", card.MCT_RY_CD == "싸우나/목욕탕", None),
+          ("사우나·목욕탕 외지", None, (c2.MCT_RY_CD == "싸우나/목욕탕") & c2.외지),
+          ("사우나·목욕탕 강원", None, (c2.MCT_RY_CD == "싸우나/목욕탕") & ~c2.외지),
+          ("생활소매(업종군)", card.group == "생활소매", None)]
+for name, m1, m2 in checks:
+    daily = (card[m1] if m1 is not None else c2[m2]).groupby("date").TS_AT.sum()
+    r = {"대상": name}
+    for lab, spec in [("기온구간", "bins"), ("기온연속", "cont")]:
+        e = loss(fit(daily, temp=spec)[0])
+        r.update({f"{lab}_변화": -e["피해율"], f"{lab}_하한": -e["상한"], f"{lab}_상한": -e["하한"], f"{lab}_p": e["p"]})
+    rows.append(r)
+RB = pd.DataFrame(rows).set_index("대상")
+RB.to_csv(OUT / "robustness_temperature.csv", encoding="utf-8-sig")
+t = RB.copy()
+for c in [c for c in t.columns if not c.endswith("_p")]:
+    t[c] = t[c].map("{:+.1%}".format)
+md(t.round(3).to_markdown())
+rl = G.loc["생활소매"]
+z = rl["1~3일합"] / rl["1~3일합_se"]
+rebound_p = float(2 * (1 - norm.cdf(abs(z))))
+md(f"\n- 생활소매 1~3일 뒤 반등: log {rl['1~3일합']:+.3f} (z = {z:.2f}, p = {rebound_p:.3f})\n")
+
 (OUT / "summary.md").write_text("\n".join(log), encoding="utf-8")
 
 # 발표 장표(docs/slides/build_insight2.js)용 값
 slides = {
-    "n_rain": n_rain, "rho_outsider": rho,
+    "n_rain": n_rain, "rho_outsider": rho, "retail_rebound_p": rebound_p,
+    "robust": {k: {c: float(v) for c, v in r.items()} for k, r in RB.iterrows()},
     "groups": [{"name": g, "share": r.매출비중, "loss": r.피해율, "lo": r.하한, "hi": r.상한, "p": r.p,
                 "outsider": r.외지비중, "day0": r["당일(시차모형)"], "cum": r["누적0~3일"],
                 "cum_lo": r.누적_하한, "cum_hi": r.누적_상한} for g, r in G.iterrows()],
