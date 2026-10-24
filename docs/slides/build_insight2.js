@@ -164,38 +164,32 @@ function footnote(s, text, y = 6.1, h = 0.65) {
 {
   const s = pres.addSlide({ masterName: "CONTENT", sectionTitle: SEC });
   s.addText("인사이트 2 · 피해는 외지 관광객이 찾는 업종에 집중", { placeholder: "title" });
-  s.addText("레저·숙박 세부 업종과 고객 거주지(외지·강원) 비교 · 비가 오면 관광객은 실내 시설로 이동",
+  s.addText("외지 관광객이 많은 골프장·레저타운·교통은 크게 감소 · 주민 시설은 변화 없음 · 비 오면 사우나 등 실내 시설로 이동",
             { placeholder: "body" });
   const subs = D.sub.filter((r) => LABEL[r.name]).sort((a, b) => b.loss - a.loss);
   const col = (r) => (r.p < 0.05 ? (r.loss > 0 ? HEX.primary : HEX.up) : HEX.neutral);
-  caption(s, "레저·숙박 세부 업종별 비 10mm+ 날 매출 변화", 0.6, 1.75, 7.9);
-  s.addChart(pres.charts.BAR, [{ name: "매출 변화", labels: subs.map((r) => LABEL[r.name]), values: subs.map((r) => chg(r.loss)) }], {
-    x: 0.5, y: 2.1, w: 8.0, h: 4.7, barDir: "bar", catAxisOrientation: "maxMin", valAxisMinVal: -0.7, valAxisMaxVal: 0.3,
+  const o = (n) => pct(S[n].outsider).replace("+", "");
+  const g = S["실내/실외골프장"], sa = S["싸우나/목욕탕"];
+  // 차트 하나만: 업종 이름 옆에 외지 고객 비중을 붙여 거주지 정보를 차트 안에 담음
+  const lab = (r) => `${LABEL[r.name]}  (외지 ${o(r.name)})`;
+  caption(s, "레저·숙박 세부 업종별 비 10mm+ 날 매출 변화 (괄호: 외지 고객 비중)", 1.4, 1.8, 10.5);
+  s.addText([{ text: "■ ", options: { color: HEX.primary } }, { text: "뚜렷한 감소   " },
+             { text: "■ ", options: { color: HEX.neutral } }, { text: "차이 불확실   " },
+             { text: "■ ", options: { color: HEX.up } }, { text: "뚜렷한 증가" }],
+            { x: 1.4, y: 2.15, w: 10.5, h: 0.3, fontSize: 11, color: HEX.muted, margin: 0, isTextBox: true,
+              objectName: "color key" });
+  s.addChart(pres.charts.BAR, [{ name: "매출 변화", labels: subs.map(lab), values: subs.map((r) => chg(r.loss)) }], {
+    x: 1.3, y: 2.5, w: 10.7, h: 4.25, barDir: "bar", catAxisOrientation: "maxMin", valAxisMinVal: -0.7, valAxisMaxVal: 0.3,
     valAxisMajorUnit: 0.1, chartColors: subs.map(col), showValue: true, dataLabelPosition: "outEnd", showLegend: false,
     barGapWidthPct: 45, catAxisLabelPos: "low", ...AXIS, objectName: "subindustry chart" });
-
-  [[HEX.primary, "뚜렷한 감소"], [HEX.neutral, "차이 불확실"], [HEX.up, "뚜렷한 증가"]].forEach(([c, t], i) => {
-    s.addShape(pres.shapes.ROUNDED_RECTANGLE, { x: 9.0 + i * 1.27, y: 1.85, w: 0.28, h: 0.28, rectRadius: 0.05,
-                                                fill: { color: c }, line: { color: c }, objectName: `key ${i + 1}` });
-    s.addText(t, { x: 9.33 + i * 1.27, y: 1.8, w: 0.95, h: 0.38, fontSize: 11, color: HEX.ink, margin: 0, isTextBox: true });
-  });
-  const g = S["실내/실외골프장"], sa = S["싸우나/목욕탕"];
-  const o = (n) => pct(S[n].outsider).replace("+", "");
-  const res = (r) => `강원 ${pct(chg(r["강원_피해율"]))} · 외지 ${pct(chg(r["외지_피해율"]))}`;
-  card3(s, 9.0, 2.35, 3.75, 1.15, `골프장 (외지 고객 ${o("실내/실외골프장")})`, res(g), "외지 관광객이 더 크게 취소", HEX.primary, "sub card 1");
-  card3(s, 9.0, 3.62, 3.75, 1.15, "사우나·목욕탕", res(sa), "비 오는 날 실내로 이동", HEX.upText, "sub card 2");
-  card3(s, 9.0, 4.89, 3.75, 1.15, "헬스장·스포츠시설", `외지 고객 ${o("헬스장")}~${o("스포츠시설")}`, "주민 이용 시설은 영향 없음",
-        HEX.muted, "sub card 3");
-  footnote(s, `사우나 증가는 기온 통제 방식을 바꿔도 ${pct(RB["사우나·목욕탕"]["기온연속_변화"])} (p = ${RB["사우나·목욕탕"]["기온연속_p"].toFixed(3)}). ` +
-              "강원 = 강원도 거주(춘천 밖 포함)", 6.1, 0.65);
-  s.addNotes("레저와 숙박을 세부 업종으로 쪼갠 결과입니다. 주황은 뚜렷하게 줄어든 업종, 회색은 차이가 불확실한 업종, 파랑은 뚜렷하게 늘어난 업종입니다. " +
+  s.addNotes("레저와 숙박을 세부 업종으로 쪼갠 결과입니다. 진한 초록은 뚜렷하게 줄어든 업종, 연한 회색은 차이가 불확실한 업종, 라임은 뚜렷하게 늘어난 업종이고, 괄호 안은 외지 고객 비중입니다. " +
     "골프장은 58%, 고속버스·철도는 47%, 레저타운·놀이동산은 45% 줄었습니다. 세 업종 모두 외지 고객 비중이 80% 안팎입니다. " +
     `같은 골프장 안에서도 강원 고객은 ${pct(chg(g["강원_피해율"]))}, 외지 고객은 ${pct(chg(g["외지_피해율"]))}로 외지 관광객이 더 크게 빠집니다. ` +
     "반대로 헬스장과 스포츠시설처럼 주민이 쓰는 곳은 영향이 없습니다. " +
     `사우나는 오히려 ${pct(chg(sa.loss)).replace("+", "")} 늘었고, 외지 고객은 ${pct(chg(sa["외지_피해율"]))} 늘었습니다. ` +
     "비 오는 날 더 선선해서 늘어난 것 아니냐는 질문에 대비해 기온을 촘촘히 통제해 봤는데, 그래도 18% 증가로 유의합니다. " +
     "비가 오면 관광객이 아예 안 오는 게 아니라 실내로 옮겨 간다는 신호이고, 이것이 정책 제안의 실마리입니다. " +
-    "호텔·콘도도 21% 줄었지만 결제가 들쭉날쭉해 통계적으로는 불확실하고, 숙박은 앱 선결제가 데이터에서 빠지는 한계가 있습니다.");
+    "참고로 강원 고객은 강원도 거주자 전체(춘천 밖 포함)입니다. 호텔·콘도도 21% 줄었지만 결제가 들쭉날쭉해 통계적으로는 불확실하고, 숙박은 앱 선결제가 데이터에서 빠지는 한계가 있습니다.");
 }
 
 // ---------------------------------------------------------------- 부록 A. 컬럼 선택
